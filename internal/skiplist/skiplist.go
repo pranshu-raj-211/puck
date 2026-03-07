@@ -2,15 +2,15 @@ package skiplist
 
 import (
 	"bytes"
-	"errors"
 	"math"
 	"math/rand"
 )
 
 type Node struct {
-	key   []byte
-	value []byte
-	next  []*Node
+	key       []byte
+	value     []byte
+	next      []*Node
+	tombstone bool // tombstone true means the node has been deleted
 }
 
 type KeyValuePair struct {
@@ -63,7 +63,7 @@ func New(maxLevel int, p float64) *Skiplist {
 }
 
 // Search for node with given key in the skiplist
-func (s *Skiplist) Search(key []byte) (interface{}, error) {
+func (s *Skiplist) Search(key []byte) (value []byte, found bool, tombstone bool) {
 	current := s.head
 
 	for i := s.level; i >= 0; i-- {
@@ -74,10 +74,13 @@ func (s *Skiplist) Search(key []byte) (interface{}, error) {
 
 	current = current.next[0]
 	if current != nil && bytes.Compare(current.key, key) == 0 {
-		return current.value, nil
+		if current.tombstone {
+			return nil, true, true
+		} else {
+			return current.value, true, false
+		}
 	}
-
-	return 0, errors.New("key not found")
+	return nil, false, false
 }
 
 // Insert or update a key-value pair
@@ -91,6 +94,7 @@ func (s *Skiplist) Insert(key []byte, value []byte) {
 		s.update[i] = current
 	}
 
+	// don't need to care about tombstones here, if tombstone is true - we're adding a new kv pair
 	current = current.next[0]
 	if current != nil && bytes.Compare(current.key, key) == 0 {
 		current.value = value
@@ -116,6 +120,8 @@ func (s *Skiplist) Insert(key []byte, value []byte) {
 		s.update[i].next[i] = newNode
 	}
 }
+
+// TODO: remove deletes entirely, replace with insert nil and true from memtable instead
 
 // Delete node with given key in the skiplist
 func (s *Skiplist) Delete(key []byte) bool {
