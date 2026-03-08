@@ -74,17 +74,13 @@ func (s *Skiplist) Search(key []byte) (value []byte, found bool, tombstone bool)
 
 	current = current.next[0]
 	if current != nil && bytes.Compare(current.key, key) == 0 {
-		if current.tombstone {
-			return nil, true, true
-		} else {
-			return current.value, true, false
-		}
+		return current.value, true, current.tombstone
 	}
 	return nil, false, false
 }
 
 // Insert or update a key-value pair
-func (s *Skiplist) Insert(key []byte, value []byte) {
+func (s *Skiplist) Insert(key []byte, value []byte, tombstone bool) {
 	current := s.head
 
 	for i := s.level; i >= 0; i-- {
@@ -94,13 +90,15 @@ func (s *Skiplist) Insert(key []byte, value []byte) {
 		s.update[i] = current
 	}
 
-	// don't need to care about tombstones here, if tombstone is true - we're adding a new kv pair
+	// updating an old kv pair (tombstoned pairs included in this)
 	current = current.next[0]
 	if current != nil && bytes.Compare(current.key, key) == 0 {
 		current.value = value
+		current.tombstone = tombstone
 		return
 	}
 
+	// create a new node, node with key needed was not found
 	nodeLevel := s.randomLevel()
 	if nodeLevel > s.level {
 		for i := s.level + 1; i <= nodeLevel; i++ {
@@ -110,47 +108,16 @@ func (s *Skiplist) Insert(key []byte, value []byte) {
 	}
 
 	newNode := &Node{
-		key:   key,
-		value: value,
-		next:  make([]*Node, nodeLevel+1),
+		key:       key,
+		value:     value,
+		tombstone: tombstone,
+		next:      make([]*Node, nodeLevel+1),
 	}
 
 	for i := 0; i <= nodeLevel; i++ {
 		newNode.next[i] = s.update[i].next[i]
 		s.update[i].next[i] = newNode
 	}
-}
-
-// TODO: remove deletes entirely, replace with insert nil and true from memtable instead
-
-// Delete node with given key in the skiplist
-func (s *Skiplist) Delete(key []byte) bool {
-	current := s.head
-
-	for i := s.level; i >= 0; i-- {
-		for current.next[i] != nil && bytes.Compare(current.next[i].key, key) < 0 {
-			current = current.next[i]
-		}
-		s.update[i] = current
-	}
-
-	current = current.next[0]
-	if current == nil || bytes.Compare(current.key, key) != 0 {
-		return false
-	}
-
-	for i := 0; i <= s.level; i++ {
-		if s.update[i].next[i] != current {
-			break
-		}
-		s.update[i].next[i] = current.next[i]
-	}
-
-	for s.level > 0 && s.head.next[s.level] == nil {
-		s.level--
-	}
-
-	return true
 }
 
 // Returns a list of key value pairs between [startKey, endKey] (both inclusive)
